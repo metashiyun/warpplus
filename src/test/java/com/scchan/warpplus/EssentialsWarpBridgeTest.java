@@ -75,4 +75,11 @@ class EssentialsWarpBridgeTest {
         when(command.getPlugin()).thenReturn(mock(Plugin.class));
         assertThrows(IllegalArgumentException.class, () -> EssentialsWarpBridge.connect(essentials));
     }
+
+    @Test
+    void neverDelegatesListInvocationsOrNumericPageTargets() {
+        assertThrows(IllegalArgumentException.class, () -> bridge.execute(sender, new String[]{}));
+        assertThrows(IllegalArgumentException.class, () -> bridge.execute(sender, new String[]{"2"}));
+        verify(command, never()).execute(any(), anyString(), any());
+    }
 }

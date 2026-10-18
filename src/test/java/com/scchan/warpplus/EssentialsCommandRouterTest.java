@@ -32,32 +32,39 @@ class EssentialsCommandRouterTest {
     @Test
     void linkedNamesAreRewrittenToTheRealWarpBeforeEssentialsProcessesTheEvent() {
         assertEquals("/essentials:warp Existing_Market", route("/warp COM.Example").getMessage());
-        assertEquals("/essentials:warp Existing_Market", route("/warpplus:warp go com.example").getMessage());
+        assertEquals("/essentials:warp Existing_Market", route("/warpplus:warp com.example").getMessage());
         assertEquals("/essentials:warp Existing_Market Alex", route("/warp com.example Alex").getMessage());
-        assertEquals("/essentials:warp Existing_Market Alex", route("/warp go com.example Alex").getMessage());
-        verify(legacy, times(4)).checkEnabled();
+        verify(legacy, times(3)).checkEnabled();
         verify(legacy, never()).execute(any(), any());
     }
 
     @Test
-    void legacyNamesPagesOtherPlayerAndExplicitEscapeKeepTheirArguments() {
+    void legacyTeleportNamesAndOtherPlayerArgumentsArePreserved() {
         assertEquals("/essentials:warp spawn", route("/warp spawn").getMessage());
-        assertEquals("/essentials:warp", route("/warp").getMessage());
-        assertEquals("/essentials:warp 2", route("/warp 2").getMessage());
         assertEquals("/essentials:warp old_market Alex", route("/warp old_market Alex").getMessage());
-        assertEquals("/essentials:warp help", route("/warp legacy help").getMessage());
-        assertEquals("/essentials:warp old_market", route("/warp go old_market").getMessage());
+        assertEquals("/essentials:warp help", route("/warp help").getMessage());
+        assertEquals("/essentials:warp list", route("/warp list").getMessage());
     }
 
     @Test
     void registryCommandsNamespacesAndOtherPluginsRemainWithTheirOriginalHandler() throws IOException {
-        for (String command : new String[]{"/warp help", "/warp list com", "/warp whois com.example", "/warp link com.foo spawn",
-                "/warp namespace org", "/warp set com name Test", "/warp com", "/warp go com", "/warpwhois com.example",
+        for (String command : new String[]{"/warpplus help", "/warpplus list com", "/whois com.example", "/warpplus link com.foo spawn",
+                "/warpplus namespace org", "/warpplus set com name Test", "/warp com", "/warpwhois com.example",
                 "/ewarp spawn", "/essentials:warp spawn", "/other:warp spawn"}) {
             assertEquals(command, route(command).getMessage());
         }
         registry.register(ADMIN, new DomainName("org"), new WarpLocation(java.util.UUID.randomUUID(), "world", 0, 64, 0, 0, 0));
         assertEquals("/warp org", route("/warp org").getMessage());
+    }
+
+    @Test
+    void bareWarpPaginationAndTooManyArgumentsNeverReachEssentials() {
+        for (String message : new String[]{"/warp", "/warp 2", "/warpplus:warp", "/warpplus:warp 0", "/warp go com.example Alex"}) {
+            var event = route(message);
+            assertTrue(event.isCancelled(), message);
+            assertEquals(message, event.getMessage());
+        }
+        verify(legacy, never()).checkEnabled();
     }
 
     @Test

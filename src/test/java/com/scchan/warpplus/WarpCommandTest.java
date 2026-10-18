@@ -48,7 +48,7 @@ class WarpCommandTest {
         registry.register(ADMIN, ROOT, null);
         executor = new WarpCommand(plugin, registry);
         command = mock(Command.class);
-        when(command.getName()).thenReturn("warp");
+        when(command.getName()).thenReturn("warpplus");
         console = mock(CommandSender.class);
         when(console.hasPermission(anyString())).thenReturn(true);
         player = mock(Player.class);
@@ -104,8 +104,7 @@ class WarpCommandTest {
         var offline = mock(org.bukkit.OfflinePlayer.class);
         when(server.getOfflinePlayer(ALICE)).thenReturn(offline);
         when(offline.getName()).thenReturn("Alice");
-        when(command.getName()).thenReturn("warpwhois");
-        run(player, "com");
+        lookup(player, "com");
         String text = messages(player);
         assertTrue(text.contains("WHOIS com"));
         assertTrue(text.contains(ALICE.toString()));
@@ -130,9 +129,9 @@ class WarpCommandTest {
     }
 
     @Test
-    void reservedTopLevelNamesCanBeAddressedWithGo() throws IOException {
+    void formerSubcommandNamesAreOrdinaryTeleportTargets() throws IOException {
         registry.register(ADMIN, new DomainName("help"), null);
-        run(player, "go", "help");
+        visit(player, "help");
         assertTrue(messages(player).contains("help is a namespace"));
     }
 
@@ -161,7 +160,7 @@ class WarpCommandTest {
     @Test
     void unavailableWorldDoesNotTriggerTeleport() throws IOException {
         registry.setLocation(ADMIN, ROOT, new WarpLocation(UUID.randomUUID(), "missing-world", 0, 64, 0, 0, 0));
-        run(player, "com");
+        visit(player, "com");
         assertTrue(messages(player).contains("world is unavailable"));
         verify(player, never()).teleportAsync(any(Location.class), any(PlayerTeleportEvent.TeleportCause.class));
     }
@@ -175,7 +174,7 @@ class WarpCommandTest {
         when(player.isOnline()).thenReturn(true);
         BukkitScheduler scheduler = mock(BukkitScheduler.class);
         when(server.getScheduler()).thenReturn(scheduler);
-        run(player, "com");
+        visit(player, "com");
         verify(player).teleportAsync(any(Location.class), eq(PlayerTeleportEvent.TeleportCause.COMMAND));
         verify(player, never()).sendMessage(any(Component.class));
         future.complete(true);
@@ -189,7 +188,7 @@ class WarpCommandTest {
     void borderAndHeightChecksRejectOutOfBoundsDestinations() throws IOException {
         World world = setupDestination();
         when(world.getMaxHeight()).thenReturn(60);
-        run(player, "com");
+        visit(player, "com");
         assertTrue(messages(player).contains("outside"));
         verify(player, never()).teleportAsync(any(Location.class), any(PlayerTeleportEvent.TeleportCause.class));
     }
@@ -199,7 +198,9 @@ class WarpCommandTest {
         registry.register(ADMIN, CHILD, null);
         registry.transfer(ADMIN, CHILD, BOB);
         assertEquals(List.of("com.example"), executor.onTabComplete(player, command, "warp", new String[]{"delete", "com"}));
-        assertEquals(List.of("com", "com.example"), executor.onTabComplete(player, command, "warp", new String[]{"whois", "com"}));
+        when(command.getName()).thenReturn("whois");
+        assertEquals(List.of("com", "com.example"), executor.onTabComplete(player, command, "whois", new String[]{"com"}));
+        when(command.getName()).thenReturn("warpplus");
         assertEquals(List.of("contact"), executor.onTabComplete(player, command, "warp", new String[]{"set", "com.example", "con"}));
         assertEquals(List.of("com.example."), executor.onTabComplete(player, command, "warp", new String[]{"register", "com"}));
     }
@@ -214,22 +215,21 @@ class WarpCommandTest {
         run(player, "link", "com.example", "market");
         assertEquals("Market", registry.require(CHILD).essentialsWarp());
         assertNull(registry.require(CHILD).location());
-        run(player, "com.example");
+        visit(player, "com.example");
         verify(legacy).execute(eq(player), aryEq(new String[]{"Market"}));
         verify(player, never()).teleportAsync(any(Location.class), any(PlayerTeleportEvent.TeleportCause.class));
     }
 
     @Test
-    void legacyWarpsAndListCommandsArePassedToEssentialsWithoutReinterpretingTheirNames() {
+    void legacyVisitsKeepTheirArgumentsButBareWarpNeverLists() {
         LegacyWarps legacy = mock(LegacyWarps.class);
         when(legacy.available()).thenReturn(true);
         executor = new WarpCommand(plugin, registry, legacy);
-        run(player, "old_market", "Alex");
-        run(player);
-        run(player, "legacy", "help");
+        visit(player, "old_market", "Alex");
+        visit(player);
         verify(legacy).execute(eq(player), aryEq(new String[]{"old_market", "Alex"}));
-        verify(legacy).execute(eq(player), aryEq(new String[]{}));
-        verify(legacy).execute(eq(player), aryEq(new String[]{"help"}));
+        verify(legacy, never()).execute(eq(player), aryEq(new String[]{}));
+        assertTrue(messages(player).contains("Usage: /warp <destination>"));
     }
 
     @Test
@@ -242,7 +242,7 @@ class WarpCommandTest {
         assertTrue(registry.find(CHILD).isEmpty());
         registry.link(ADMIN, CHILD, "market");
         executor = new WarpCommand(plugin, registry);
-        run(player, "com.example");
+        visit(player, "com.example");
         assertTrue(messages(player).contains("EssentialsX is unavailable"));
         assertEquals("market", registry.require(CHILD).essentialsWarp());
         verify(player, never()).teleportAsync(any(Location.class), any(PlayerTeleportEvent.TeleportCause.class));
@@ -254,12 +254,55 @@ class WarpCommandTest {
         registry.transfer(ADMIN, CHILD, BOB);
         var offline = mock(org.bukkit.OfflinePlayer.class);
         when(server.getOfflinePlayer(BOB)).thenReturn(offline);
-        run(player, "whois", "com.example");
+        lookup(player, "com.example");
         assertTrue(messages(player).contains("EssentialsX warp: market"));
         assertTrue(messages(player).contains("EssentialsX unavailable"));
         verify(server, never()).getWorld(any(UUID.class));
         run(player, "list", "com");
         assertTrue(messages(player).contains("com.example [EssentialsX]"));
+    }
+
+    @Test
+    void warpCannotRunRegistryOperationsOrShowWhois() {
+        visit(console, "delete", "com");
+        visit(console, "namespace", "org");
+        visit(console, "set", "com", "name", "Changed");
+        visit(player, "whois", "com");
+        assertEquals(List.of(ROOT), registry.names());
+        assertTrue(registry.require(ROOT).metadata().isEmpty());
+        assertFalse(messages(player).contains("WHOIS"));
+    }
+
+    @Test
+    void formerSubcommandNameCanBeLinkedAndVisitedDirectly() throws IOException {
+        registry.link(ADMIN, new DomainName("delete"), "spawn");
+        LegacyWarps legacy = mock(LegacyWarps.class);
+        when(legacy.available()).thenReturn(true);
+        executor = new WarpCommand(plugin, registry, legacy);
+        visit(player, "delete");
+        verify(legacy).execute(eq(player), aryEq(new String[]{"spawn"}));
+        assertTrue(registry.find("delete").isPresent());
+    }
+
+    @Test
+    void warpCompletesOnlyDestinationsAndWarpplusCompletesRegistryActions() throws IOException {
+        registry.link(ADMIN, CHILD, "market");
+        when(command.getName()).thenReturn("warp");
+        assertEquals(List.of("com.example"), executor.onTabComplete(player, command, "warp", new String[]{""}));
+        when(command.getName()).thenReturn("warpplus");
+        List<String> actions = executor.onTabComplete(player, command, "warpplus", new String[]{""});
+        assertTrue(actions.containsAll(List.of("help", "list", "register", "link")));
+        assertFalse(actions.contains("com.example"));
+    }
+
+    @Test
+    void consoleCannotInvokeEssentialsListingThroughASingleDestinationArgument() {
+        LegacyWarps legacy = mock(LegacyWarps.class);
+        when(legacy.available()).thenReturn(true);
+        executor = new WarpCommand(plugin, registry, legacy);
+        visit(console, "spawn");
+        verify(legacy, never()).execute(any(), any());
+        assertTrue(messages(console).contains("<destination> <player>"));
     }
 
     private World setupDestination() throws IOException {
@@ -273,6 +316,18 @@ class WarpCommandTest {
         when(world.getWorldBorder()).thenReturn(border);
         when(border.isInside(any(Location.class))).thenReturn(true);
         return world;
+    }
+
+    private void visit(CommandSender sender, String... args) {
+        when(command.getName()).thenReturn("warp");
+        run(sender, args);
+        when(command.getName()).thenReturn("warpplus");
+    }
+
+    private void lookup(CommandSender sender, String domain) {
+        when(command.getName()).thenReturn("whois");
+        run(sender, domain);
+        when(command.getName()).thenReturn("warpplus");
     }
 
     private void run(CommandSender sender, String... args) {

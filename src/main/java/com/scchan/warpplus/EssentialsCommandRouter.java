@@ -29,15 +29,15 @@ public final class EssentialsCommandRouter implements Listener {
         String[] tokens = message.substring(1).strip().split("\\s+");
         if (tokens.length == 0 || !COMMANDS.contains(tokens[0].toLowerCase(Locale.ROOT)) || !legacy.available()) return;
         String[] args = Arrays.copyOfRange(tokens, 1, tokens.length);
-        String[] forwarded = WarpCommand.legacyArguments(registry, args);
-        if (forwarded != null) {
-            try {
+        try {
+            String[] forwarded = WarpCommand.legacyArguments(registry, args);
+            if (forwarded != null) {
                 legacy.checkEnabled();
                 event.setMessage("/essentials:warp" + (forwarded.length == 0 ? "" : " " + String.join(" ", forwarded)));
-            } catch (IllegalArgumentException ex) {
-                event.setCancelled(true);
-                event.getPlayer().sendMessage(Component.text(ex.getMessage(), NamedTextColor.RED));
             }
+        } catch (IllegalArgumentException ex) {
+            event.setCancelled(true);
+            event.getPlayer().sendMessage(Component.text(ex.getMessage(), NamedTextColor.RED));
         }
     }
 }

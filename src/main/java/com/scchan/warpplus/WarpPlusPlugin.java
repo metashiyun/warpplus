@@ -24,12 +24,12 @@ public final class WarpPlusPlugin extends JavaPlugin {
                 }
             }
             var executor = new WarpCommand(this, registry, legacy);
-            for (String name : new String[]{"warp", "warpwhois"}) {
+            for (String name : new String[]{"warp", "warpplus", "whois"}) {
                 var command = Objects.requireNonNull(getCommand(name), "Missing command " + name);
                 command.setExecutor(executor);
                 command.setTabCompleter(executor);
             }
-            getLogger().info("Loaded " + registry.names().size() + " domains. Use /warpplus:warp help if /warp is claimed by another plugin.");
+            getLogger().info("Loaded " + registry.names().size() + " domains. /warp teleports; /whois looks up records; /warpplus manages the registry.");
         } catch (IOException ex) {
             getLogger().log(Level.SEVERE, "Cannot load the registry. WarpPlus is disabled; the registry file has been preserved.", ex);
             getServer().getPluginManager().disablePlugin(this);

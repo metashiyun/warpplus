@@ -40,6 +40,7 @@ public final class EssentialsWarpBridge implements LegacyWarps {
 
     @Override
     public void execute(CommandSender sender, String[] args) {
+        LegacyWarps.validateTeleportArguments(args);
         checkEnabled();
         // The e-prefixed label prevents EssentialsX handing this command back to WarpPlus.
         warp.execute(sender, "ewarp", args);

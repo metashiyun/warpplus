@@ -20,6 +20,13 @@ public interface LegacyWarps {
     void execute(CommandSender sender, String[] args);
     List<String> complete(CommandSender sender, String[] args);
 
+    static void validateTeleportArguments(String[] args) {
+        if (args.length < 1 || args.length > 2) throw new IllegalArgumentException("Usage: /warp <destination> [player]");
+        if (args[0].matches("[0-9]+")) {
+            throw new IllegalArgumentException("Numeric EssentialsX targets select list pages. Use a named teleport destination.");
+        }
+    }
+
     static IllegalArgumentException unavailable() {
         return new IllegalArgumentException("EssentialsX is unavailable. Linked destinations cannot be visited until it is enabled.");
     }

@@ -7,12 +7,16 @@ author: Sicheng Chen
 softdepend: [Essentials]
 commands:
   warp:
-    description: Visit and manage the warp domain registry.
+    description: Teleport to a warp domain or EssentialsX destination.
+    usage: /<command> <destination> [player]
+    permission: warpplus.use
+  warpplus:
+    description: Browse and manage the warp domain registry.
     usage: /<command> help
     permission: warpplus.use
-  warpwhois:
+  whois:
     description: Look up a warp's public registration details.
-    aliases: [wwhois]
+    aliases: [warpwhois, wwhois]
     usage: /<command> <domain>
     permission: warpplus.use
 permissions:
