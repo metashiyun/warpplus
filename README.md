@@ -14,14 +14,68 @@ Names run **from parent to child, left to right**, as in the example above. Each
 ## Build and install
 
 1. Install JDK 21 or newer to build, then run `./gradlew build` (`gradlew.bat build` on Windows).
-2. Copy `build/libs/warpplus-1.0.0.jar` into your Paper server's `plugins/` directory.
+2. Copy `build/libs/warpplus-1.1.0.jar` into your Paper server's `plugins/` directory, replacing the previous WarpPlus JAR if present.
 3. Restart the server.
 
 The plugin compiles against **Paper 1.21.11**, targets Java 21 bytecode, and uses no server internals. Paper 1.21.11 is the minimum supported API; newer Paper versions should be verified on your server before deployment. Use the Java runtime required by your server: Paper 1.21.11 uses Java 21; Paper 26.1+ requires Java 25. See [Paper's requirements](https://docs.papermc.io/paper/getting-started/) and [plugin setup](https://docs.papermc.io/paper/dev/project-setup/).
 
-This plugin supplies its own `/warp`; it does not import or modify EssentialsX or another plugin's warp registry. If another plugin owns `/warp`, use **`/warpplus:warp`** (and `/warpplus:warpwhois`) explicitly, or configure your server's command aliases. There are no external services or runtime library downloads from WarpPlus.
+WarpPlus runs standalone or integrates with **EssentialsX** when its `Essentials` plugin is enabled at startup. The integration compiles against the EssentialsX 2.21.2 API; install an EssentialsX release compatible with your Paper version. There are no external services or runtime library downloads from WarpPlus.
 
-## Example setup
+## EssentialsX integration
+
+EssentialsX keeps its warp locations, permissions, and teleport settings. WarpPlus adds hierarchical names, ownership, and WHOIS records that **link to existing EssentialsX warps**. It never copies, creates, moves, or deletes EssentialsX warp locations. A link resolves the target on every visit, so moving `/setwarp market` changes where every linked domain leads. Removing that warp causes EssentialsX to report its normal missing-warp error.
+
+For an existing EssentialsX warp named `market`, run these as a registrar/operator:
+
+```text
+/warp namespace com
+/warp namespace com.example
+/warp link com.example.market market
+/warp set com.example.market organization Example Guild
+/warp set com.example.market maintainer Alex
+/warp set com.example.market contact Discord: example-guild
+/warp whois com.example.market
+/warp com.example.market
+```
+
+Create the target first with EssentialsX's `/setwarp market` if it does not exist (requires EssentialsX's normal permissions). `/warp link` creates a domain if its parent exists and you control it, or replaces the destination of a domain you control. Linking does not grant permission to visit the target warp.
+
+With the integration active:
+
+| Command | Behavior |
+| --- | --- |
+| `/warp spawn` | Visit the existing EssentialsX warp if `spawn` is not a registered WarpPlus domain. |
+| `/warp com.example.market` | Visit the EssentialsX warp linked to that domain. |
+| `/warp go com.example.market` | Explicit domain visit, including reserved subcommand names. |
+| `/warp com.example.market Alex` | EssentialsX's teleport-other-player form, with its normal permissions. |
+| `/warp` or `/warp 2` | EssentialsX warp list and pagination. |
+| `/warp legacy [args...]` | Explicit EssentialsX handling, even when a name collides with a domain or subcommand. |
+| `/warp list com.example` | Browse the WarpPlus hierarchy. |
+| `/warp help` | Show WarpPlus help. |
+
+Registered WarpPlus names take priority over legacy warp names. Namespaces and WarpPlus subcommands stay with WarpPlus. `/ewarp` and `/essentials:warp` remain direct EssentialsX commands. In standalone mode, `/warp` without arguments shows WarpPlus help as before.
+
+For player-entered legacy and linked teleport commands, WarpPlus rewrites the command to `/essentials:warp <target>` **before EssentialsX's player-command listener** runs. EssentialsX therefore sees the original warp name for command cooldown matching and handles its normal warp permissions, per-warp permissions, costs, warmups, teleport cooldowns, safety checks, and `/back` state. WarpPlus never runs these as console or temporarily grants permissions. Programmatic Bukkit command execution delegates directly to the EssentialsX command; as with normal Bukkit dispatch, it does not synthesize a player-command preprocessing event. Tab suggestions for legacy targets come from EssentialsX's own permission-filtered completer. [EssentialsX warp implementation](https://github.com/EssentialsX/Essentials/blob/2.21.2/Essentials/src/main/java/com/earth2me/essentials/commands/Commandwarp.java), [command listener](https://github.com/EssentialsX/Essentials/blob/2.21.2/Essentials/src/main/java/com/earth2me/essentials/EssentialsPlayerListener.java).
+
+If EssentialsX becomes unavailable, links remain in the registry and visits fail without falling back to a local position. WHOIS shows the target name and backend status, without reading or publishing its world coordinates. `/warp clearlocation <domain>` removes a link while preserving the domain, metadata, and children. Deleting a WarpPlus record also leaves the EssentialsX warp untouched.
+
+`/warp register` and `/warp setlocation` still create **local WarpPlus destinations**, with WarpPlus's standalone teleport behavior. They do not use EssentialsX warp permission/cost/warmup settings. Use `/warp link` for an EssentialsX-managed destination. Converting between a link and a local destination replaces the previous destination; there is no hidden fallback.
+
+### Command ownership
+
+EssentialsX normally hands `/warp` to another plugin that provides it. Keep `warp` out of EssentialsX's `overridden-commands` setting to allow WarpPlus's hierarchy commands. If command ownership on your server differs, use `/warpplus:warp` and `/warpplus:warpwhois` explicitly. See [EssentialsX's command conflict guidance](https://essentialsx.net/wiki/faq).
+
+You can also merge this alias into your server-root `commands.yml`, then restart:
+
+```yaml
+aliases:
+  warp:
+    - 'warpplus:warp $1-'
+```
+
+Preserve other aliases already in that file. Paper's legacy `commands.yml` aliases have limitations around tab completion; the explicit `/warpplus:warp` command retains WarpPlus's completer. [Paper alias documentation](https://docs.papermc.io/paper/reference/bukkit-commands-configuration/).
+
+## Standalone destination example
 
 As an operator in-game:
 
@@ -60,7 +114,7 @@ Anyone with the default use permission can browse, query, and travel:
 /warp com.example.market
 ```
 
-Metadata belongs to each individual record; it does not inherit from a parent. WHOIS displays missing fields as `(not provided)`. All registry metadata and destination coordinates are public to players with `warpplus.use`. Contact fields should contain information intended for public display. Text is literal, without color codes, MiniMessage, or link execution.
+Metadata belongs to each individual record; it does not inherit from a parent. WHOIS displays missing fields as `(not provided)`. All registry metadata, link names, and local destination coordinates are public to players with `warpplus.use`. Contact fields should contain information intended for public display. Text is literal, without color codes, MiniMessage, or link execution.
 
 ## Commands
 
@@ -73,16 +127,18 @@ Metadata belongs to each individual record; it does not inherit from a parent. W
 | `/warp list [parent\|-] [page]` | List direct children, sorted by name, eight per page. Omit parent or use `-` for roots. |
 | `/warp register <domain>` | Register a destination at your current position, including yaw and pitch. Players only. |
 | `/warp namespace <domain>` | Register a name without a destination. |
+| `/warp link <domain> <essentials-warp>` | Register or update a controlled domain with an existing EssentialsX warp target. |
+| `/warp legacy [args...]` | Run the EssentialsX warp list or teleport command explicitly. |
 | `/warp set <domain> <field> <value...>` | Set `name`, `organization`, `poi`, `maintainer`, `contact`, `website`, or `description`. Use `-` as the value to clear it. |
 | `/warp setlocation <domain>` | Set or move a destination to your current position. Players only. |
-| `/warp clearlocation <domain>` | Remove a destination while keeping its registration and children. |
+| `/warp clearlocation <domain>` | Remove a local destination or EssentialsX link while keeping its registration and children. |
 | `/warp transfer <domain> <online-player\|uuid>` | Transfer that record's ownership. |
 | `/warp delete <domain>` | Delete a record with no children. |
 | `/warp help` | Show command help. |
 
 Names are case-insensitive ASCII letters/digits with internal hyphens, separated by dots. Labels have 1–63 characters; the full name has at most 253 characters and 16 labels. For example, `COM.Example` resolves to `com.example`. Unicode is supported in descriptive metadata. Tab completion offers names, manageable domains, metadata fields, and online transfer recipients. List entries can suggest the corresponding browse or teleport command when clicked.
 
-Teleportation uses Paper's asynchronous chunk loading. A namespace without a destination cannot be visited; `/warp list <namespace>` shows its children. Destinations resolve by world UUID, and unloaded/missing worlds, out-of-height positions, border violations, and cancelled teleports return an error. The plugin uses the exact registered position, without searching for safe ground; maintainers should choose suitable arrival points.
+Local teleportation uses Paper's asynchronous chunk loading. A namespace without a destination cannot be visited; `/warp list <namespace>` shows its children. Local destinations resolve by world UUID, and unloaded/missing worlds, out-of-height positions, border violations, and cancelled teleports return an error. Local warps use the exact registered position, without searching for safe ground; maintainers should choose suitable arrival points. Linked destinations use EssentialsX's own teleport handling instead.
 
 ## Permissions and delegation
 
@@ -99,7 +155,7 @@ Command access always requires `warpplus.use`, including for administrators. Own
 
 ## Storage and recovery
 
-Records are saved to `plugins/WarpPlus/registry.yml`, with schema version 1. Dotted names are stored as literal values in a list. Each successful change writes a temporary file in the same directory and atomically replaces the registry before updating memory. A failed save leaves the current in-memory registry intact. Filesystems without atomic replacement support reject writes. No shutdown-only save is required.
+Records are saved to `plugins/WarpPlus/registry.yml`, with schema version 2. Existing version 1 registries load unchanged and upgrade on the next successful edit. Back up your registry before upgrading; WarpPlus 1.0 cannot read version 2 files. Dotted names are stored as literal values in a list. Each successful change writes a temporary file in the same directory and atomically replaces the registry before updating memory. A failed save leaves the current in-memory registry intact. Filesystems without atomic replacement support reject writes. No shutdown-only save is required.
 
 Loading rejects corrupt YAML, unsupported schemas, invalid records, duplicates, and missing parents. WarpPlus disables itself on load failure and preserves the registry. Fix or restore the file while the server is stopped, then restart. Back up `registry.yml` with your server data. There is no live reload; do not edit the file while the server is running. Small registry writes run synchronously on the server thread; this initial implementation is intended for community-sized registries rather than high-volume bulk registration.
 
@@ -110,6 +166,6 @@ Loading rejects corrupt YAML, unsupported schemas, invalid records, duplicates, 
 ./gradlew build
 ```
 
-Tests exercise name validation, permission boundaries and delegation, timestamps, failed-save rollback, YAML round trips/corruption, command handling, WHOIS, pagination, completion, and mocked asynchronous teleport handling. They do not launch a Minecraft server or client.
+Tests exercise name validation, permission boundaries and delegation, timestamps, failed-save rollback, YAML round trips/corruption and migration, command handling, WHOIS, pagination, completion, mocked asynchronous teleport handling, and the optional EssentialsX bridge and command routing. They do not launch a Minecraft server or client.
 
-Before production use, test the JAR on your server version: register a namespace, delegate it to a non-operator, create a child warp, check WHOIS as a different player, teleport, restart, and confirm the record and destination persist. Also verify `/warpplus:warp` if another warp plugin is installed.
+Before production use, test the JAR on your server version: register a namespace, delegate it to a non-operator, create a child warp, check WHOIS as a different player, teleport, restart, and confirm the record and destination persist. With EssentialsX, also link an existing warp, verify allowed/denied users, warmups/costs/cooldowns, move/delete the backing warp, and restart with EssentialsX absent to confirm links remain unavailable. Check both `/warp` and `/warpplus:warp` on your server's command setup.
