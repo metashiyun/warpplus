@@ -111,3 +111,7 @@ The registry is stored in `plugins/WarpPlus/registry.yml` and saved after each c
 ```
 
 To publish, open **Actions → Cut release → Run workflow** on GitHub and choose `patch`, `minor`, or `major`. The workflow bumps the version on `main`, builds and tests the plugin, and publishes a tagged release with the JAR and its SHA-256 checksum.
+
+## License
+
+[MIT](LICENSE) © 2026 Sicheng Chen.
