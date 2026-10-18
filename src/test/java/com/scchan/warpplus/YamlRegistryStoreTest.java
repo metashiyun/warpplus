@@ -1,0 +1,70 @@
+package com.scchan.warpplus;
+
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+
+import static com.scchan.warpplus.WarpRegistryTest.*;
+import static org.junit.jupiter.api.Assertions.*;
+
+class YamlRegistryStoreTest {
+    @TempDir Path directory;
+
+    @Test
+    void roundTripsDottedDomainsMetadataWorldAndNullableOwner() throws IOException {
+        var file = directory.resolve("plugin/registry.yml");
+        var store = new YamlRegistryStore(file);
+        assertTrue(store.load().isEmpty());
+        var child = new WarpRecord(CHILD, BOB, NOW, NOW,
+                Map.of(MetadataField.NAME, "Market: 商店", MetadataField.CONTACT, "discord: example#1234"),
+                new WarpLocation(UUID.randomUUID(), "world_nether", -12.5, 64, 33, 45, -12));
+        var root = new WarpRecord(ROOT, null, NOW, NOW, Map.of(), null);
+        store.save(List.of(root, child));
+        assertEquals(List.of(root, child), store.load());
+        assertTrue(Files.readString(file).contains("domain: com.example"));
+        store.save(List.of(root));
+        assertEquals(List.of(root), store.load());
+        try (var files = Files.list(file.getParent())) { assertEquals(1, files.count()); }
+    }
+
+    @Test
+    void malformedYamlIsPreservedAndRejected() throws IOException {
+        Path file = directory.resolve("registry.yml");
+        String broken = "schema-version: 1\nwarps: [unterminated";
+        Files.writeString(file, broken);
+        assertThrows(IOException.class, () -> new YamlRegistryStore(file).load());
+        assertEquals(broken, Files.readString(file));
+    }
+
+    @Test
+    void rejectsUnknownSchemaWrongTypesAndInvalidDates() throws IOException {
+        Path file = directory.resolve("registry.yml");
+        var store = new YamlRegistryStore(file);
+        for (String invalid : List.of("schema-version: 99\nwarps: []", "schema-version: 1\nwarps: {}", "")) {
+            Files.writeString(file, invalid);
+            assertThrows(IOException.class, store::load);
+        }
+        store.save(List.of(record(ROOT)));
+        String valid = Files.readString(file);
+        Files.writeString(file, valid.replace(NOW.toString(), "not-a-date"));
+        assertThrows(IOException.class, store::load);
+        Files.writeString(file, valid.replace("domain: com", "domain: 123"));
+        assertThrows(IOException.class, store::load);
+    }
+
+    @Test
+    void failedReplacementLeavesOriginalRegistryUntouchedAndCleansTemporaryFile() throws IOException {
+        // A directory at the destination makes replacement fail on every supported filesystem.
+        Path destination = Files.createDirectory(directory.resolve("registry.yml"));
+        Files.writeString(destination.resolve("sentinel"), "preserve");
+        assertThrows(IOException.class, () -> new YamlRegistryStore(destination).save(List.of(record(ROOT))));
+        assertEquals("preserve", Files.readString(destination.resolve("sentinel")));
+        try (var files = Files.list(directory)) { assertEquals(1, files.count()); }
+    }
+}
