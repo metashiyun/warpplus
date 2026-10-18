@@ -20,7 +20,7 @@ Names run **from parent to child, left to right**, as in the example above. Each
 ## Build and install
 
 1. Install JDK 21 or newer to build, then run `./gradlew build` (`gradlew.bat build` on Windows).
-2. Copy `build/libs/warpplus-1.3.0.jar` into your Paper server's `plugins/` directory, replacing the previous WarpPlus JAR if present.
+2. Copy `build/libs/warpplus-1.3.1.jar` into your Paper server's `plugins/` directory, replacing the previous WarpPlus JAR if present.
 3. Restart the server.
 
 The plugin compiles against **Paper 1.21.11**, targets Java 21 bytecode, and uses no server internals. Paper 1.21.11 is the minimum supported API; newer Paper versions should be verified on your server before deployment. Use the Java runtime required by your server: Paper 1.21.11 uses Java 21; Paper 26.1+ requires Java 25. See [Paper's requirements](https://docs.papermc.io/paper/getting-started/) and [plugin setup](https://docs.papermc.io/paper/dev/project-setup/).
