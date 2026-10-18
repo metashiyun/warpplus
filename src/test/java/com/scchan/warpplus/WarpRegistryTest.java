@@ -174,6 +174,63 @@ class WarpRegistryTest {
         assertThrows(IllegalArgumentException.class, () -> new WarpLocation(UUID.randomUUID(), "world", 0, 0, 0, Float.POSITIVE_INFINITY, 0));
     }
 
+    @Test
+    void linksNewDomainsAndPreservesTheirMetadataWhenRelinked() throws IOException {
+        registry.register(ADMIN, ROOT, null);
+        registry.link(ALICE_USER, CHILD, "market");
+        assertEquals(ALICE, registry.require(CHILD).owner());
+        assertEquals("market", registry.require(CHILD).essentialsWarp());
+        assertTrue(registry.require(CHILD).hasDestination());
+        registry.setField(ALICE_USER, CHILD, MetadataField.CONTACT, "Example Guild");
+        registry.transfer(ALICE_USER, CHILD, BOB);
+        registry.link(BOB_USER, CHILD, "harbor");
+        assertEquals("harbor", registry.require(CHILD).essentialsWarp());
+        assertEquals("Example Guild", registry.require(CHILD).metadata().get(MetadataField.CONTACT));
+        assertEquals(NOW, registry.require(CHILD).createdAt());
+    }
+
+    @Test
+    void linkingObeysRegistrationAndManagementPermissions() throws IOException {
+        assertThrows(IllegalArgumentException.class, () -> registry.link(BOB_USER, ROOT, "spawn"));
+        assertThrows(IllegalArgumentException.class, () -> registry.link(ADMIN, CHILD, "spawn"));
+        registry.register(ADMIN, ROOT, null);
+        assertThrows(IllegalArgumentException.class, () -> registry.link(BOB_USER, CHILD, "spawn"));
+        registry.link(ALICE_USER, CHILD, "spawn");
+        assertThrows(IllegalArgumentException.class, () -> registry.link(BOB_USER, CHILD, "market"));
+    }
+
+    @Test
+    void linkAndLocalDestinationReplaceEachOtherAndClearingUnlinks() throws IOException {
+        registry.register(ADMIN, ROOT, null);
+        var destination = new WarpLocation(UUID.randomUUID(), "world", 1, 64, 2, 0, 0);
+        registry.setLocation(ADMIN, ROOT, destination);
+        registry.link(ADMIN, ROOT, "spawn");
+        assertNull(registry.require(ROOT).location());
+        registry.setLocation(ADMIN, ROOT, destination);
+        assertNull(registry.require(ROOT).essentialsWarp());
+        registry.link(ADMIN, ROOT, "spawn");
+        registry.setLocation(ADMIN, ROOT, null);
+        assertFalse(registry.require(ROOT).hasDestination());
+    }
+
+    @Test
+    void failedLinkSaveDoesNotCreateOrReplaceARecord() throws IOException {
+        registry.register(ADMIN, ROOT, null);
+        WarpRecord original = registry.require(ROOT);
+        store.fail = true;
+        assertThrows(IOException.class, () -> registry.link(ADMIN, ROOT, "spawn"));
+        assertThrows(IOException.class, () -> registry.link(ADMIN, CHILD, "market"));
+        assertEquals(original, registry.require(ROOT));
+        assertTrue(registry.find(CHILD).isEmpty());
+    }
+
+    @Test
+    void rejectsLinkedTargetsThatCouldChangeTheForwardedCommandArguments() {
+        for (String target : List.of("", "spawn Alice", "spawn\nhelp", "spawn\u00a0Alice", "a/b", "a\\b")) {
+            assertThrows(IllegalArgumentException.class, () -> registry.link(ADMIN, ROOT, target));
+        }
+    }
+
     static WarpRecord record(DomainName name) { return new WarpRecord(name, ALICE, NOW, NOW, Map.of(), null); }
 
     private void registryRoot() { assertDoesNotThrow(() -> registry.register(ADMIN, ROOT, null)); }

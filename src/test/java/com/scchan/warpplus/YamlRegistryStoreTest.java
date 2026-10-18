@@ -67,4 +67,39 @@ class YamlRegistryStoreTest {
         assertEquals("preserve", Files.readString(destination.resolve("sentinel")));
         try (var files = Files.list(directory)) { assertEquals(1, files.count()); }
     }
+
+    @Test
+    void migratesVersionOneOnlyOnSaveAndRoundTripsLinksInVersionTwo() throws IOException {
+        Path file = directory.resolve("registry.yml");
+        var store = new YamlRegistryStore(file);
+        store.save(List.of(record(ROOT)));
+        String versionOne = Files.readString(file).replace("schema-version: 2", "schema-version: 1");
+        Files.writeString(file, versionOne);
+        assertEquals(List.of(record(ROOT)), store.load());
+        assertEquals(versionOne, Files.readString(file));
+        var registry = new WarpRegistry(store, CLOCK);
+        registry.link(ADMIN, CHILD, "Existing_Market");
+        assertTrue(Files.readString(file).contains("schema-version: 2"));
+        assertEquals("Existing_Market", new WarpRegistry(store, CLOCK).require(CHILD).essentialsWarp());
+        registry.setField(ADMIN, CHILD, MetadataField.MAINTAINER, "Alex");
+        registry.transfer(ADMIN, CHILD, BOB);
+        assertEquals("Existing_Market", new WarpRegistry(store, CLOCK).require(CHILD).essentialsWarp());
+    }
+
+    @Test
+    void refusesRecordsWithBothBackendsOrWrongLinkTypes() throws IOException {
+        Path file = directory.resolve("registry.yml");
+        var store = new YamlRegistryStore(file);
+        var destination = new WarpLocation(UUID.randomUUID(), "world", 1, 64, 2, 0, 0);
+        store.save(List.of(record(ROOT).withLocation(destination, NOW)));
+        String local = Files.readString(file);
+        Files.writeString(file, local.replace("  location:", "  essentials-warp: spawn\n  location:"));
+        assertThrows(IOException.class, store::load);
+        store.save(List.of(record(ROOT).withEssentialsWarp("spawn", NOW)));
+        String linked = Files.readString(file);
+        Files.writeString(file, linked.replace("essentials-warp: spawn", "essentials-warp: []"));
+        assertThrows(IOException.class, store::load);
+        Files.writeString(file, linked.replace("schema-version: 2", "schema-version: 1"));
+        assertThrows(IOException.class, store::load);
+    }
 }

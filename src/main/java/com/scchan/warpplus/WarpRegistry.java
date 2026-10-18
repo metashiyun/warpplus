@@ -5,6 +5,7 @@ import java.time.Clock;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.TreeMap;
 import java.util.UUID;
 import java.util.function.UnaryOperator;
@@ -38,6 +39,13 @@ public final class WarpRegistry {
         return record;
     }
 
+    public Optional<WarpRecord> find(DomainName domain) { return Optional.ofNullable(records.get(domain)); }
+
+    public Optional<WarpRecord> find(String name) {
+        try { return find(new DomainName(name)); }
+        catch (IllegalArgumentException ex) { return Optional.empty(); }
+    }
+
     public List<WarpRecord> children(DomainName parent) {
         return records.values().stream()
                 .filter(record -> Objects.equals(record.domain().parent().orElse(null), parent)).toList();
@@ -59,6 +67,30 @@ public final class WarpRegistry {
 
     public void register(Actor actor, DomainName domain, WarpLocation location) throws IOException {
         if (records.containsKey(domain)) throw new IllegalArgumentException("Domain is already registered: " + domain);
+        checkRegistration(actor, domain);
+        var next = new TreeMap<>(records);
+        var now = clock.instant();
+        next.put(domain, new WarpRecord(domain, actor.playerId(), now, now, Map.of(), location));
+        commit(next);
+    }
+
+    /** Creates a linked record or replaces an owned record's destination in one durable mutation. */
+    public void link(Actor actor, DomainName domain, String essentialsWarp) throws IOException {
+        String target = WarpRecord.validateEssentialsWarp(Objects.requireNonNull(essentialsWarp));
+        WarpRecord current = records.get(domain);
+        var now = clock.instant();
+        if (current == null) {
+            checkRegistration(actor, domain);
+            current = new WarpRecord(domain, actor.playerId(), now, now, Map.of(), null);
+        } else {
+            checkManage(actor, domain);
+        }
+        var next = new TreeMap<>(records);
+        next.put(domain, current.withEssentialsWarp(target, now));
+        commit(next);
+    }
+
+    private void checkRegistration(Actor actor, DomainName domain) {
         if (!actor.admin() && !actor.canRegister()) throw new IllegalArgumentException("You cannot register domains.");
         DomainName parent = domain.parent().orElse(null);
         if (parent == null) {
@@ -69,10 +101,6 @@ public final class WarpRegistry {
             require(parent);
             checkManage(actor, parent);
         }
-        var next = new TreeMap<>(records);
-        var now = clock.instant();
-        next.put(domain, new WarpRecord(domain, actor.playerId(), now, now, Map.of(), location));
-        commit(next);
     }
 
     public void setField(Actor actor, DomainName domain, MetadataField field, String value) throws IOException {

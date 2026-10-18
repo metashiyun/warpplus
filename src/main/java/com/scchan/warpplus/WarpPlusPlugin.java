@@ -12,7 +12,18 @@ public final class WarpPlusPlugin extends JavaPlugin {
     public void onEnable() {
         try {
             var registry = new WarpRegistry(new YamlRegistryStore(getDataFolder().toPath().resolve("registry.yml")), Clock.systemUTC());
-            var executor = new WarpCommand(this, registry);
+            LegacyWarps legacy = LegacyWarps.NONE;
+            var essentials = getServer().getPluginManager().getPlugin("Essentials");
+            if (essentials != null && essentials.isEnabled()) {
+                try {
+                    legacy = EssentialsWarpBridge.connect(essentials);
+                    getServer().getPluginManager().registerEvents(new EssentialsCommandRouter(registry, legacy), this);
+                    getLogger().info("EssentialsX integration enabled: /warp supports legacy warps and linked domains.");
+                } catch (LinkageError | IllegalArgumentException ex) {
+                    getLogger().log(Level.WARNING, "EssentialsX integration could not start. Linked destinations remain unavailable.", ex);
+                }
+            }
+            var executor = new WarpCommand(this, registry, legacy);
             for (String name : new String[]{"warp", "warpwhois"}) {
                 var command = Objects.requireNonNull(getCommand(name), "Missing command " + name);
                 command.setExecutor(executor);

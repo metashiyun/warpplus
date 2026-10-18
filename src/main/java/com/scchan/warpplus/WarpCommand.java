@@ -20,15 +20,21 @@ import java.util.UUID;
 import java.util.logging.Level;
 
 public final class WarpCommand implements CommandExecutor, TabCompleter {
-    private static final List<String> READ_COMMANDS = List.of("go", "whois", "list", "help");
-    private static final List<String> WRITE_COMMANDS = List.of("register", "namespace", "set", "setlocation", "clearlocation", "transfer", "delete");
+    private static final List<String> READ_COMMANDS = List.of("go", "whois", "list", "help", "legacy");
+    private static final List<String> WRITE_COMMANDS = List.of("register", "namespace", "link", "set", "setlocation", "clearlocation", "transfer", "delete");
     private static final int PAGE_SIZE = 8;
     private final WarpPlusPlugin plugin;
     private final WarpRegistry registry;
+    private final LegacyWarps legacy;
 
     public WarpCommand(WarpPlusPlugin plugin, WarpRegistry registry) {
+        this(plugin, registry, LegacyWarps.NONE);
+    }
+
+    public WarpCommand(WarpPlusPlugin plugin, WarpRegistry registry, LegacyWarps legacy) {
         this.plugin = plugin;
         this.registry = registry;
+        this.legacy = legacy;
     }
 
     @Override
@@ -43,6 +49,13 @@ public final class WarpCommand implements CommandExecutor, TabCompleter {
                 whois(sender, new DomainName(args[0]));
                 return true;
             }
+            if (legacy.available()) {
+                String[] forwarded = legacyArguments(registry, args);
+                if (forwarded != null) {
+                    legacy.execute(sender, forwarded);
+                    return true;
+                }
+            }
             if (args.length == 0) { help(sender); return true; }
             String action = args[0].toLowerCase(Locale.ROOT);
             switch (action) {
@@ -50,6 +63,14 @@ public final class WarpCommand implements CommandExecutor, TabCompleter {
                 case "go" -> { arity(args, 2, "/warp go <domain>"); teleport(sender, new DomainName(args[1])); }
                 case "whois" -> { arity(args, 2, "/warp whois <domain>"); whois(sender, new DomainName(args[1])); }
                 case "list" -> list(sender, args);
+                case "legacy" -> legacy.execute(sender, Arrays.copyOfRange(args, 1, args.length));
+                case "link" -> {
+                    arity(args, 3, "/warp link <domain> <essentials-warp>");
+                    legacy.checkEnabled();
+                    String target = legacy.find(args[2]).orElseThrow(() -> new IllegalArgumentException("EssentialsX warp is not registered: " + args[2]));
+                    registry.link(actor(sender), new DomainName(args[1]), target);
+                    success(sender, "Linked " + args[1] + " to EssentialsX warp " + target + ". Its permissions and teleport rules still apply.");
+                }
                 case "register", "namespace" -> {
                     arity(args, 2, "/warp " + action + " <domain>");
                     DomainName domain = new DomainName(args[1]);
@@ -92,8 +113,13 @@ public final class WarpCommand implements CommandExecutor, TabCompleter {
     }
 
     private void teleport(CommandSender sender, DomainName domain) {
+        WarpRecord record = registry.require(domain);
+        if (record.essentialsWarp() != null) {
+            legacy.execute(sender, new String[]{record.essentialsWarp()});
+            return;
+        }
         Player player = player(sender);
-        WarpLocation target = registry.require(domain).location();
+        WarpLocation target = record.location();
         if (target == null) throw new IllegalArgumentException(domain + " is a namespace without a destination. Browse it with /warp list " + domain);
         var world = plugin.getServer().getWorld(target.worldId());
         if (world == null) throw new IllegalArgumentException("Destination world is unavailable: " + target.worldName());
@@ -131,6 +157,12 @@ public final class WarpCommand implements CommandExecutor, TabCompleter {
         detail(sender, "Registered (UTC)", record.createdAt().toString());
         detail(sender, "Updated (UTC)", record.updatedAt().toString());
         detail(sender, "Children", Integer.toString(registry.children(domain).size()));
+        if (record.essentialsWarp() != null) {
+            detail(sender, "Destination", "EssentialsX warp: " + record.essentialsWarp());
+            detail(sender, "Backend status", !legacy.available() ? "EssentialsX unavailable"
+                    : legacy.find(record.essentialsWarp()).isPresent() ? "Registered" : "EssentialsX warp missing");
+            return;
+        }
         WarpLocation location = record.location();
         detail(sender, "Destination", location == null ? "Namespace only" : String.format(Locale.ROOT,
                 "%s [%.2f, %.2f, %.2f]", location.worldName(), location.x(), location.y(), location.z()));
@@ -149,11 +181,11 @@ public final class WarpCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage(Component.text("Domains under " + (parent == null ? "(root)" : parent) + " • " + page + "/" + pages, NamedTextColor.GOLD));
         if (children.isEmpty()) detail(sender, "Registry", "No children registered.");
         children.stream().skip((long) (page - 1) * PAGE_SIZE).limit(PAGE_SIZE).forEach(record -> {
-            String target = record.location() == null ? "list " : "go ";
+            String target = record.hasDestination() ? "go " : "list ";
             Component entry = Component.text(record.domain().value(), NamedTextColor.AQUA)
                     .clickEvent(ClickEvent.suggestCommand("/warpplus:warp " + target + record.domain()))
-                    .hoverEvent(HoverEvent.showText(Component.text("Click to " + (record.location() == null ? "browse children" : "prepare teleport"))))
-                    .append(Component.text(record.location() == null ? " [namespace]" : " [warp]", NamedTextColor.GRAY));
+                    .hoverEvent(HoverEvent.showText(Component.text("Click to " + (record.hasDestination() ? "prepare teleport" : "browse children"))))
+                    .append(Component.text(record.essentialsWarp() != null ? " [EssentialsX]" : record.hasDestination() ? " [warp]" : " [namespace]", NamedTextColor.GRAY));
             sender.sendMessage(entry);
         });
         if (page < pages) detail(sender, "Next", "/warp list " + (parent == null ? "-" : parent) + " " + (page + 1));
@@ -165,10 +197,12 @@ public final class WarpCommand implements CommandExecutor, TabCompleter {
                 "/warp <domain> (or /warp go <domain>) — teleport",
                 "/warp whois <domain> (or /warpwhois <domain>) — public registry",
                 "/warp list [parent|-] [page] — browse direct children")) detail(sender, "•", line);
+        if (legacy.available()) detail(sender, "•", "/warp legacy [args...] — EssentialsX warp list or teleport; /warp alone lists EssentialsX warps");
         if (sender.hasPermission("warpplus.register") || sender.hasPermission("warpplus.admin")) {
             for (String line : List.of(
-                    "/warp register <domain> — register at your position",
+                    "/warp register <domain> — register a local destination at your position",
                     "/warp namespace <domain> — register without a destination",
+                    "/warp link <domain> <essentials-warp> — register or connect an owned domain to EssentialsX",
                     "/warp set <domain> <field> <value...|-> — edit or clear public details",
                     "Fields: name, organization, poi, maintainer, contact, website, description",
                     "/warp setlocation|clearlocation <domain> — change destination",
@@ -205,6 +239,26 @@ public final class WarpCommand implements CommandExecutor, TabCompleter {
         if (args.length != count) throw new IllegalArgumentException("Usage: " + usage);
     }
 
+    /** Null means WarpPlus handles the command. Registered domains take priority over legacy names. */
+    static String[] legacyArguments(WarpRegistry registry, String[] args) {
+        if (args.length == 0) return args.clone();
+        String action = args[0].toLowerCase(Locale.ROOT);
+        if (action.equals("legacy")) return Arrays.copyOfRange(args, 1, args.length);
+        String[] targetArgs = args;
+        if (action.equals("go")) {
+            if (args.length != 2 && args.length != 3) return null;
+            targetArgs = Arrays.copyOfRange(args, 1, args.length);
+        } else if (READ_COMMANDS.contains(action) || WRITE_COMMANDS.contains(action)) {
+            return null;
+        }
+        var record = registry.find(targetArgs[0]);
+        if (record.isEmpty()) return targetArgs.clone();
+        if (record.get().essentialsWarp() == null || targetArgs.length > 2) return null;
+        String[] forwarded = targetArgs.clone();
+        forwarded[0] = record.get().essentialsWarp();
+        return forwarded;
+    }
+
     private static void detail(CommandSender sender, String label, String value) {
         sender.sendMessage(Component.text(label + ": ", NamedTextColor.GRAY).append(Component.text(value, NamedTextColor.WHITE)));
     }
@@ -225,14 +279,19 @@ public final class WarpCommand implements CommandExecutor, TabCompleter {
                 options.addAll(READ_COMMANDS);
                 if (sender.hasPermission("warpplus.register") || sender.hasPermission("warpplus.admin")) options.addAll(WRITE_COMMANDS);
                 registry.names().forEach(name -> options.add(name.value()));
+                if (legacy.available()) options.addAll(legacy.complete(sender, new String[]{prefix}));
             } else if (args.length == 2 && (READ_COMMANDS.contains(action) || WRITE_COMMANDS.contains(action)) && !action.equals("help")) {
                 registry.names().stream().filter(name -> !WRITE_COMMANDS.contains(action) || registry.canManage(actor(sender), name))
                         .forEach(name -> options.add(name.value() + (action.equals("register") || action.equals("namespace") ? "." : "")));
                 if (action.equals("list")) options.add("-");
+                if (action.equals("go") && legacy.available()) options.addAll(legacy.complete(sender, new String[]{prefix}));
+                if (action.equals("legacy") && legacy.available()) options.addAll(legacy.complete(sender, new String[]{prefix}));
             } else if (args.length == 3 && action.equals("set")) {
                 for (MetadataField field : MetadataField.values()) options.add(field.key());
             } else if (args.length == 3 && action.equals("transfer")) {
                 plugin.getServer().getOnlinePlayers().forEach(player -> options.add(player.getName()));
+            } else if (args.length == 3 && action.equals("link") && legacy.available()) {
+                options.addAll(legacy.complete(sender, new String[]{prefix}));
             }
         }
         return options.stream().filter(option -> option.startsWith(prefix)).limit(50).toList();

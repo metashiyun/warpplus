@@ -24,6 +24,7 @@ import java.util.logging.Logger;
 import static com.scchan.warpplus.WarpRegistryTest.*;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.AdditionalMatchers.aryEq;
 import static org.mockito.Mockito.*;
 
 class WarpCommandTest {
@@ -201,6 +202,64 @@ class WarpCommandTest {
         assertEquals(List.of("com", "com.example"), executor.onTabComplete(player, command, "warp", new String[]{"whois", "com"}));
         assertEquals(List.of("contact"), executor.onTabComplete(player, command, "warp", new String[]{"set", "com.example", "con"}));
         assertEquals(List.of("com.example."), executor.onTabComplete(player, command, "warp", new String[]{"register", "com"}));
+    }
+
+    @Test
+    void linkingChecksTheActualEssentialsWarpAndDelegatesVisitsWithoutLocalTeleport() throws IOException {
+        registry.transfer(ADMIN, ROOT, BOB);
+        LegacyWarps legacy = mock(LegacyWarps.class);
+        when(legacy.available()).thenReturn(true);
+        when(legacy.find("market")).thenReturn(java.util.Optional.of("Market"));
+        executor = new WarpCommand(plugin, registry, legacy);
+        run(player, "link", "com.example", "market");
+        assertEquals("Market", registry.require(CHILD).essentialsWarp());
+        assertNull(registry.require(CHILD).location());
+        run(player, "com.example");
+        verify(legacy).execute(eq(player), aryEq(new String[]{"Market"}));
+        verify(player, never()).teleportAsync(any(Location.class), any(PlayerTeleportEvent.TeleportCause.class));
+    }
+
+    @Test
+    void legacyWarpsAndListCommandsArePassedToEssentialsWithoutReinterpretingTheirNames() {
+        LegacyWarps legacy = mock(LegacyWarps.class);
+        when(legacy.available()).thenReturn(true);
+        executor = new WarpCommand(plugin, registry, legacy);
+        run(player, "old_market", "Alex");
+        run(player);
+        run(player, "legacy", "help");
+        verify(legacy).execute(eq(player), aryEq(new String[]{"old_market", "Alex"}));
+        verify(legacy).execute(eq(player), aryEq(new String[]{}));
+        verify(legacy).execute(eq(player), aryEq(new String[]{"help"}));
+    }
+
+    @Test
+    void missingEssentialsWarpCannotBeLinkedAndAnUnavailableBackendCannotBeVisited() throws IOException {
+        LegacyWarps legacy = mock(LegacyWarps.class);
+        when(legacy.available()).thenReturn(true);
+        when(legacy.find("missing")).thenReturn(java.util.Optional.empty());
+        executor = new WarpCommand(plugin, registry, legacy);
+        run(console, "link", "com.example", "missing");
+        assertTrue(registry.find(CHILD).isEmpty());
+        registry.link(ADMIN, CHILD, "market");
+        executor = new WarpCommand(plugin, registry);
+        run(player, "com.example");
+        assertTrue(messages(player).contains("EssentialsX is unavailable"));
+        assertEquals("market", registry.require(CHILD).essentialsWarp());
+        verify(player, never()).teleportAsync(any(Location.class), any(PlayerTeleportEvent.TeleportCause.class));
+    }
+
+    @Test
+    void linkedWhoisAndBrowsingExposeTheLinkWithoutAnEssentialsWorldLookup() throws IOException {
+        registry.link(ADMIN, CHILD, "market");
+        registry.transfer(ADMIN, CHILD, BOB);
+        var offline = mock(org.bukkit.OfflinePlayer.class);
+        when(server.getOfflinePlayer(BOB)).thenReturn(offline);
+        run(player, "whois", "com.example");
+        assertTrue(messages(player).contains("EssentialsX warp: market"));
+        assertTrue(messages(player).contains("EssentialsX unavailable"));
+        verify(server, never()).getWorld(any(UUID.class));
+        run(player, "list", "com");
+        assertTrue(messages(player).contains("com.example [EssentialsX]"));
     }
 
     private World setupDestination() throws IOException {

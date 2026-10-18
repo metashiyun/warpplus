@@ -4,6 +4,7 @@ main: com.scchan.warpplus.WarpPlusPlugin
 api-version: '1.21.11'
 description: Hierarchical warp domains with delegated ownership and a public WHOIS registry.
 author: Sicheng Chen
+softdepend: [Essentials]
 commands:
   warp:
     description: Visit and manage the warp domain registry.

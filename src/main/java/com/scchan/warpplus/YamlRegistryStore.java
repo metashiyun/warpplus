@@ -29,13 +29,14 @@ public final class YamlRegistryStore implements RegistryStore {
         var yaml = new YamlConfiguration();
         try {
             yaml.loadFromString(Files.readString(file, StandardCharsets.UTF_8));
-            if (!Integer.valueOf(1).equals(yaml.get("schema-version"))) {
+            Object schema = yaml.get("schema-version");
+            if (!Integer.valueOf(1).equals(schema) && !Integer.valueOf(2).equals(schema)) {
                 throw new IllegalArgumentException("Unsupported or missing schema-version.");
             }
             Object entries = yaml.get("warps");
             if (!(entries instanceof List<?> list)) throw new IllegalArgumentException("warps must be a list.");
             var result = new ArrayList<WarpRecord>();
-            for (Object entry : list) result.add(decode(map(entry)));
+            for (Object entry : list) result.add(decode(map(entry), (Integer) schema));
             return List.copyOf(result);
         } catch (InvalidConfigurationException | RuntimeException ex) {
             throw new IOException("Invalid registry " + file + ": " + ex.getMessage(), ex);
@@ -45,7 +46,7 @@ public final class YamlRegistryStore implements RegistryStore {
     @Override
     public void save(Collection<WarpRecord> records) throws IOException {
         var yaml = new YamlConfiguration();
-        yaml.set("schema-version", 1);
+        yaml.set("schema-version", 2);
         yaml.set("warps", records.stream().map(this::encode).toList());
         Files.createDirectories(file.getParent());
         Path temporary = Files.createTempFile(file.getParent(), "registry-", ".tmp");
@@ -69,6 +70,7 @@ public final class YamlRegistryStore implements RegistryStore {
             if (record.metadata().containsKey(field)) metadata.put(field.key(), record.metadata().get(field));
         }
         entry.put("metadata", metadata);
+        if (record.essentialsWarp() != null) entry.put("essentials-warp", record.essentialsWarp());
         WarpLocation location = record.location();
         if (location != null) {
             var destination = new LinkedHashMap<String, Object>();
@@ -84,7 +86,7 @@ public final class YamlRegistryStore implements RegistryStore {
         return entry;
     }
 
-    private WarpRecord decode(Map<?, ?> entry) {
+    private WarpRecord decode(Map<?, ?> entry, int schema) {
         DomainName domain = new DomainName(string(entry, "domain"));
         UUID owner = entry.get("owner") == null ? null : UUID.fromString(string(entry, "owner"));
         var metadata = new EnumMap<MetadataField, String>(MetadataField.class);
@@ -101,8 +103,10 @@ public final class YamlRegistryStore implements RegistryStore {
                     number(destination, "x"), number(destination, "y"), number(destination, "z"),
                     (float) number(destination, "yaw"), (float) number(destination, "pitch"));
         }
+        String essentialsWarp = entry.get("essentials-warp") == null ? null : string(entry, "essentials-warp");
+        if (schema == 1 && essentialsWarp != null) throw new IllegalArgumentException("EssentialsX links require schema-version 2.");
         return new WarpRecord(domain, owner, Instant.parse(string(entry, "created-at")),
-                Instant.parse(string(entry, "updated-at")), metadata, location);
+                Instant.parse(string(entry, "updated-at")), metadata, location, essentialsWarp);
     }
 
     private static Map<?, ?> map(Object value) {
