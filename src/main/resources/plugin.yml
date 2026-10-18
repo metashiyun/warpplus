@@ -1,0 +1,29 @@
+name: WarpPlus
+version: '${version}'
+main: com.scchan.warpplus.WarpPlusPlugin
+api-version: '1.21.11'
+description: Hierarchical warp domains with delegated ownership and a public WHOIS registry.
+author: Sicheng Chen
+commands:
+  warp:
+    description: Visit and manage the warp domain registry.
+    usage: /<command> help
+    permission: warpplus.use
+  warpwhois:
+    description: Look up a warp's public registration details.
+    aliases: [wwhois]
+    usage: /<command> <domain>
+    permission: warpplus.use
+permissions:
+  warpplus.use:
+    description: Teleport, browse, and read public WHOIS records.
+    default: true
+  warpplus.register:
+    description: Register children of domains you control and edit your domains.
+    default: true
+  warpplus.register.root:
+    description: Register a new top-level domain.
+    default: op
+  warpplus.admin:
+    description: Manage all domains, including unowned console-created namespaces.
+    default: op
