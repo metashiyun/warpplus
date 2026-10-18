@@ -100,7 +100,7 @@ class WarpCommandTest {
     @Test
     void whoisAliasShowsPublicMetadataOwnerAndNamespaceStatus() throws IOException {
         registry.setField(ADMIN, ROOT, MetadataField.CONTACT, "guild@example.com");
-        registry.setField(ADMIN, ROOT, MetadataField.MAINTAINER, "Example Team");
+        registry.setField(ADMIN, ROOT, MetadataField.ORGANIZATION, "Example Team");
         var offline = mock(org.bukkit.OfflinePlayer.class);
         when(server.getOfflinePlayer(ALICE)).thenReturn(offline);
         when(offline.getName()).thenReturn("Alice");
@@ -111,6 +111,8 @@ class WarpCommandTest {
         assertTrue(text.contains("guild@example.com"));
         assertTrue(text.contains("Example Team"));
         assertTrue(text.contains("Namespace only"));
+        assertFalse(text.contains("poi:"));
+        assertFalse(text.contains("maintainer:"));
     }
 
     @Test
@@ -303,6 +305,16 @@ class WarpCommandTest {
         visit(console, "spawn");
         verify(legacy, never()).execute(any(), any());
         assertTrue(messages(console).contains("<destination> <player>"));
+    }
+
+    @Test
+    void retiredFieldsCannotBeSetOrOfferedInCompletion() {
+        run(console, "set", "com", "poi", "Market");
+        run(console, "set", "com", "maintainer", "Alex");
+        assertTrue(registry.require(ROOT).metadata().isEmpty());
+        assertTrue(messages(console).contains("Fields: name, organization, contact, website, description."));
+        assertEquals(List.of("contact", "description", "name", "organization", "website"),
+                executor.onTabComplete(console, command, "warpplus", new String[]{"set", "com", ""}));
     }
 
     private World setupDestination() throws IOException {

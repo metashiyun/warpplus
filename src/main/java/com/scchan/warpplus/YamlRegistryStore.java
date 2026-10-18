@@ -94,6 +94,8 @@ public final class YamlRegistryStore implements RegistryStore {
             if (!(field.getKey() instanceof String key) || !(field.getValue() instanceof String value)) {
                 throw new IllegalArgumentException("Metadata keys and values must be text.");
             }
+            // Retired fields in older registries are dropped on the next successful save.
+            if (key.equalsIgnoreCase("poi") || key.equalsIgnoreCase("maintainer")) continue;
             metadata.put(MetadataField.parse(key), value);
         }
         WarpLocation location = null;

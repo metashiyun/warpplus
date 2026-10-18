@@ -135,7 +135,7 @@ public final class WarpCommand implements CommandExecutor, TabCompleter {
         if (world == null) throw new IllegalArgumentException("Destination world is unavailable: " + target.worldName());
         var destination = new Location(world, target.x(), target.y(), target.z(), target.yaw(), target.pitch());
         if (target.y() < world.getMinHeight() || target.y() >= world.getMaxHeight() || !world.getWorldBorder().isInside(destination)) {
-            throw new IllegalArgumentException("Destination is outside the world's build height or border. Ask its maintainer to move it.");
+            throw new IllegalArgumentException("Destination is outside the world's build height or border. Ask its owner to move it.");
         }
         player.teleportAsync(destination, PlayerTeleportEvent.TeleportCause.COMMAND).whenComplete((teleported, failure) -> {
             if (!plugin.isEnabled()) return;
@@ -213,7 +213,7 @@ public final class WarpCommand implements CommandExecutor, TabCompleter {
                     "/warpplus namespace <domain> — register without a destination",
                     "/warpplus link <domain> <essentials-warp> — register or connect an owned domain to EssentialsX",
                     "/warpplus set <domain> <field> <value...|-> — edit or clear public details",
-                    "Fields: name, organization, poi, maintainer, contact, website, description",
+                    "Fields: " + MetadataField.keys(),
                     "/warpplus setlocation|clearlocation <domain> — change destination",
                     "/warpplus transfer <domain> <online-player|uuid> — delegate ownership",
                     "/warpplus delete <domain> — remove a domain with no children")) detail(sender, "•", line);

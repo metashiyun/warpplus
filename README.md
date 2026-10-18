@@ -15,12 +15,12 @@ com                         namespace
     └── com.example.harbor  teleport destination
 ```
 
-Names run **from parent to child, left to right**, as in the example above. Each parent must exist before its children can be registered. Every record has its own owner, registration/update timestamps, and optional public name, organization, POI, maintainer, contact, website, and description. A record may be a namespace, a destination, or a destination with children.
+Names run **from parent to child, left to right**, as in the example above. Each parent must exist before its children can be registered. Every record has its own owner, registration/update timestamps, and optional public name, organization, contact, website, and description. A record may be a namespace, a destination, or a destination with children.
 
 ## Build and install
 
 1. Install JDK 21 or newer to build, then run `./gradlew build` (`gradlew.bat build` on Windows).
-2. Copy `build/libs/warpplus-1.2.0.jar` into your Paper server's `plugins/` directory, replacing the previous WarpPlus JAR if present.
+2. Copy `build/libs/warpplus-1.3.0.jar` into your Paper server's `plugins/` directory, replacing the previous WarpPlus JAR if present.
 3. Restart the server.
 
 The plugin compiles against **Paper 1.21.11**, targets Java 21 bytecode, and uses no server internals. Paper 1.21.11 is the minimum supported API; newer Paper versions should be verified on your server before deployment. Use the Java runtime required by your server: Paper 1.21.11 uses Java 21; Paper 26.1+ requires Java 25. See [Paper's requirements](https://docs.papermc.io/paper/getting-started/) and [plugin setup](https://docs.papermc.io/paper/dev/project-setup/).
@@ -38,7 +38,6 @@ For an existing EssentialsX warp named `market`, run these as a registrar/operat
 /warpplus namespace com.example
 /warpplus link com.example.market market
 /warpplus set com.example.market organization Example Guild
-/warpplus set com.example.market maintainer Alex
 /warpplus set com.example.market contact Discord: example-guild
 /whois com.example.market
 /warp com.example.market
@@ -90,7 +89,6 @@ As an operator in-game:
 /warpplus namespace com.example
 /warpplus set com.example name Example Guild
 /warpplus set com.example organization Example Builders Association
-/warpplus set com.example maintainer Alex and the build team
 /warpplus set com.example contact Discord: example-guild
 /warpplus set com.example website https://example.com
 /warpplus transfer com.example Alex
@@ -103,8 +101,6 @@ Alex then stands at the market entrance and runs:
 ```text
 /warpplus register com.example.market
 /warpplus set com.example.market name Example Central Market
-/warpplus set com.example.market poi Public market and trading hall
-/warpplus set com.example.market maintainer Alex
 /warpplus set com.example.market contact Discord: example-guild
 /warpplus set com.example.market description Player shops, stalls, and community trading.
 ```
@@ -133,7 +129,7 @@ Metadata belongs to each individual record; it does not inherit from a parent. W
 | `/warpplus register <domain>` | Register a destination at your current position, including yaw and pitch. Players only. |
 | `/warpplus namespace <domain>` | Register a name without a destination. |
 | `/warpplus link <domain> <essentials-warp>` | Register or update a controlled domain with an existing EssentialsX warp target. |
-| `/warpplus set <domain> <field> <value...>` | Set `name`, `organization`, `poi`, `maintainer`, `contact`, `website`, or `description`. Use `-` as the value to clear it. |
+| `/warpplus set <domain> <field> <value...>` | Set `name`, `organization`, `contact`, `website`, or `description`. Use `-` as the value to clear it. |
 | `/warpplus setlocation <domain>` | Set or move a destination to your current position. Players only. |
 | `/warpplus clearlocation <domain>` | Remove a local destination or EssentialsX link while keeping its registration and children. |
 | `/warpplus transfer <domain> <online-player\|uuid>` | Transfer that record's ownership. |
@@ -142,7 +138,7 @@ Metadata belongs to each individual record; it does not inherit from a parent. W
 
 Names are case-insensitive ASCII letters/digits with internal hyphens, separated by dots. Labels have 1–63 characters; the full name has at most 253 characters and 16 labels. For example, `COM.Example` resolves to `com.example`. Unicode is supported in descriptive metadata. Tab completion offers names, manageable domains, metadata fields, and online transfer recipients. List entries can suggest the corresponding browse or teleport command when clicked.
 
-Local teleportation uses Paper's asynchronous chunk loading. A namespace without a destination cannot be visited; `/warpplus list <namespace>` shows its children. Local destinations resolve by world UUID, and unloaded/missing worlds, out-of-height positions, border violations, and cancelled teleports return an error. Local warps use the exact registered position, without searching for safe ground; maintainers should choose suitable arrival points. Linked destinations use EssentialsX's own teleport handling instead.
+Local teleportation uses Paper's asynchronous chunk loading. A namespace without a destination cannot be visited; `/warpplus list <namespace>` shows its children. Local destinations resolve by world UUID, and unloaded/missing worlds, out-of-height positions, border violations, and cancelled teleports return an error. Local warps use the exact registered position, without searching for safe ground; owners should choose suitable arrival points. Linked destinations use EssentialsX's own teleport handling instead.
 
 ## Permissions and delegation
 
@@ -155,11 +151,11 @@ Local teleportation uses Paper's asynchronous chunk loading. A namespace without
 
 Command access always requires `warpplus.use`, including for administrators. Owning a domain or **any ancestor** gives management authority over it, provided the player retains `warpplus.register`. This includes editing details/destinations, delegating ownership, registering descendants, and deleting leaf records. Unrelated players cannot claim names underneath it. A new top-level name requires registrar or administrator permission.
 
-**Delegation preserves parent authority.** If Alice owns `com` and delegates `com.example` to Bob, both can manage `com.example` and its descendants. Bob cannot manage `com` or `com.other`. Transferring a parent changes inherited authority immediately, while explicit owners of child records remain unchanged. Names do not expire. `maintainer` is public descriptive text; it grants no permissions. Deletion never cascades: remove children first.
+**Delegation preserves parent authority.** If Alice owns `com` and delegates `com.example` to Bob, both can manage `com.example` and its descendants. Bob cannot manage `com` or `com.other`. Transferring a parent changes inherited authority immediately, while explicit owners of child records remain unchanged. Names do not expire. Deletion never cascades: remove children first.
 
 ## Storage and recovery
 
-Records are saved to `plugins/WarpPlus/registry.yml`, with schema version 2. Existing version 1 registries load unchanged and upgrade on the next successful edit. Back up your registry before upgrading; WarpPlus 1.0 cannot read version 2 files. Dotted names are stored as literal values in a list. Each successful change writes a temporary file in the same directory and atomically replaces the registry before updating memory. A failed save leaves the current in-memory registry intact. Filesystems without atomic replacement support reject writes. No shutdown-only save is required.
+Records are saved to `plugins/WarpPlus/registry.yml`, with schema version 2. Version 1.3 removes the `poi` and `maintainer` fields. Older registries still load: these retired fields are ignored and removed on the next successful save; loading alone does not rewrite the file. Other metadata, ownership, timestamps, and destinations are preserved. Existing version 1 registries load unchanged and upgrade on the next successful edit. Back up your registry before upgrading; WarpPlus 1.0 cannot read version 2 files. Dotted names are stored as literal values in a list. Each successful change writes a temporary file in the same directory and atomically replaces the registry before updating memory. A failed save leaves the current in-memory registry intact. Filesystems without atomic replacement support reject writes. No shutdown-only save is required.
 
 Loading rejects corrupt YAML, unsupported schemas, invalid records, duplicates, and missing parents. WarpPlus disables itself on load failure and preserves the registry. Fix or restore the file while the server is stopped, then restart. Back up `registry.yml` with your server data. There is no live reload; do not edit the file while the server is running. Small registry writes run synchronously on the server thread; this initial implementation is intended for community-sized registries rather than high-volume bulk registration.
 

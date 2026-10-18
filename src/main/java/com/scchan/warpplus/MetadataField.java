@@ -2,15 +2,20 @@ package com.scchan.warpplus;
 
 import java.util.Arrays;
 import java.util.Locale;
+import java.util.stream.Collectors;
 
 public enum MetadataField {
-    NAME(120), ORGANIZATION(160), POI(160), MAINTAINER(120), CONTACT(240), WEBSITE(240), DESCRIPTION(500);
+    NAME(120), ORGANIZATION(160), CONTACT(240), WEBSITE(240), DESCRIPTION(500);
 
     private final int maxLength;
 
     MetadataField(int maxLength) { this.maxLength = maxLength; }
 
     public String key() { return name().toLowerCase(Locale.ROOT); }
+
+    public static String keys() {
+        return Arrays.stream(values()).map(MetadataField::key).collect(Collectors.joining(", "));
+    }
 
     public String validate(String value) {
         if (value == null || value.length() > maxLength || value.codePoints().anyMatch(Character::isISOControl)
@@ -22,6 +27,6 @@ public enum MetadataField {
 
     public static MetadataField parse(String value) {
         return Arrays.stream(values()).filter(field -> field.key().equalsIgnoreCase(value)).findFirst()
-                .orElseThrow(() -> new IllegalArgumentException("Fields: name, organization, poi, maintainer, contact, website, description."));
+                .orElseThrow(() -> new IllegalArgumentException("Fields: " + keys() + "."));
     }
 }

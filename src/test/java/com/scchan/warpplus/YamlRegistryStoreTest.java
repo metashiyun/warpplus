@@ -81,7 +81,7 @@ class YamlRegistryStoreTest {
         registry.link(ADMIN, CHILD, "Existing_Market");
         assertTrue(Files.readString(file).contains("schema-version: 2"));
         assertEquals("Existing_Market", new WarpRegistry(store, CLOCK).require(CHILD).essentialsWarp());
-        registry.setField(ADMIN, CHILD, MetadataField.MAINTAINER, "Alex");
+        registry.setField(ADMIN, CHILD, MetadataField.CONTACT, "Alex");
         registry.transfer(ADMIN, CHILD, BOB);
         assertEquals("Existing_Market", new WarpRegistry(store, CLOCK).require(CHILD).essentialsWarp());
     }
@@ -101,5 +101,27 @@ class YamlRegistryStoreTest {
         assertThrows(IOException.class, store::load);
         Files.writeString(file, linked.replace("schema-version: 2", "schema-version: 1"));
         assertThrows(IOException.class, store::load);
+    }
+
+    @Test
+    void oldRegistriesLoadWithoutRetiredFieldsAndRemoveThemOnlyOnSave() throws IOException {
+        Path file = directory.resolve("registry.yml");
+        var store = new YamlRegistryStore(file);
+        var expected = record(ROOT).withField(MetadataField.NAME, "Example", NOW)
+                .withField(MetadataField.ORGANIZATION, "Example Guild", NOW);
+        for (int schema : List.of(1, 2)) {
+            store.save(List.of(expected));
+            String legacy = Files.readString(file).replace("schema-version: 2", "schema-version: " + schema)
+                    .replace("    name: Example", "    poi: Old landmark\n    maintainer: Alex\n    name: Example");
+            assertTrue(legacy.contains("maintainer: Alex"));
+            Files.writeString(file, legacy);
+            assertEquals(List.of(expected), store.load());
+            assertEquals(legacy, Files.readString(file));
+            store.save(store.load());
+            String saved = Files.readString(file);
+            assertFalse(saved.contains("poi:"));
+            assertFalse(saved.contains("maintainer:"));
+            assertEquals(List.of(expected), store.load());
+        }
     }
 }
