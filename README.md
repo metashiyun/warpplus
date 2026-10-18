@@ -169,3 +169,12 @@ Loading rejects corrupt YAML, unsupported schemas, invalid records, duplicates, 
 Tests exercise name validation, permission boundaries and delegation, timestamps, failed-save rollback, YAML round trips/corruption and migration, command handling, WHOIS, pagination, completion, mocked asynchronous teleport handling, and the optional EssentialsX bridge and command routing. They do not launch a Minecraft server or client.
 
 Before production use, test the JAR on your server version: register a namespace, delegate it to a non-operator, create a child warp, check WHOIS as a different player, teleport, restart, and confirm the record and destination persist. With EssentialsX, also link an existing warp, verify allowed/denied users, warmups/costs/cooldowns, move/delete the backing warp, and restart with EssentialsX absent to confirm links remain unavailable. Check both `/warp` and `/warpplus:warp` on your server's command setup.
+
+## Cutting a release
+
+Run **Actions → Cut release → Run workflow** on GitHub and choose `patch`, `minor`, or `major` (default: `patch`). The workflow always releases `main`. It bumps the version in `build.gradle.kts` and the installation JAR filename in this README, commits the change, builds and tests that exact commit with Java 21, verifies the packaged plugin version, and creates an annotated `vX.Y.Z` tag. It then publishes a GitHub release with generated notes and two downloadable assets:
+
+- `warpplus-X.Y.Z.jar` — copy this into the server's `plugins/` directory.
+- `warpplus-X.Y.Z.jar.sha256` — verify with `sha256sum --check warpplus-X.Y.Z.jar.sha256`.
+
+The workflow uses the repository's automatic `GITHUB_TOKEN`; no publishing secret is required. Repository rules must allow GitHub Actions to push the release commit to `main` and create release tags. A tag push alone does not run the release workflow. If the build fails, the version commit remains on `main`, but no release tag is created. Retry failed publishing jobs from the same workflow run so they use the same release commit; starting another dispatch cuts a new version. Existing tags must point to that exact commit. Draft releases can be completed on retry; published release assets are compared and never overwritten.

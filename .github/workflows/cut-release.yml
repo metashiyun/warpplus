@@ -1,0 +1,187 @@
+name: Cut release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Semantic version part to bump for this release
+        default: patch
+        options:
+          - patch
+          - minor
+          - major
+        required: true
+        type: choice
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cut-release
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  bump:
+    name: Bump release version
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      release: ${{ steps.version.outputs.release }}
+      sha: ${{ steps.version.outputs.sha }}
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: main
+
+      - name: Bump and push release version
+        id: version
+        env:
+          INPUT_BUMP: ${{ inputs.bump }}
+        run: |
+          set -euo pipefail
+          release_version="$(python3 - <<'PY'
+          import os
+          from pathlib import Path
+          import re
+          import subprocess
+
+          path = Path("build.gradle.kts")
+          source = path.read_text()
+          component = r"(0|[1-9][0-9]*)"
+          pattern = rf'^version = "{component}\.{component}\.{component}"$'
+          matches = list(re.finditer(pattern, source, re.MULTILINE))
+          if len(matches) != 1:
+              raise SystemExit("Expected exactly one semantic project version in build.gradle.kts")
+          match = matches[0]
+          parts = list(map(int, match.groups()))
+          bump = os.environ["INPUT_BUMP"]
+          if bump not in ("major", "minor", "patch"):
+              raise SystemExit(f"Invalid version bump: {bump}")
+          index = ("major", "minor", "patch").index(bump)
+          parts[index] += 1
+          parts[index + 1:] = [0] * (2 - index)
+          version = ".".join(map(str, parts))
+          tag = f"v{version}"
+          result = subprocess.run(["git", "show-ref", "--verify", "--quiet", f"refs/tags/{tag}"])
+          if result.returncode == 0:
+              raise SystemExit(f"Tag {tag} already exists")
+          if result.returncode != 1:
+              raise SystemExit("Unable to check existing release tags")
+
+          readme_path = Path("README.md")
+          readme, count = re.subn(r'build/libs/warpplus-[0-9]+\.[0-9]+\.[0-9]+\.jar',
+                                  f"build/libs/warpplus-{version}.jar", readme_path.read_text())
+          if count != 1:
+              raise SystemExit("Expected exactly one installation JAR version in README.md")
+          path.write_text(source[:match.start()] + f'version = "{version}"' + source[match.end():])
+          readme_path.write_text(readme)
+          print(version)
+          PY
+          )"
+          tag="v${release_version}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add build.gradle.kts README.md
+          git commit -m "chore(release): prepare ${tag}" \
+            -m "Co-Authored-By: Sicheng Chen (bot) <gh-bot@scchan.com>"
+          git push origin HEAD:main
+
+          {
+            echo "release=${release_version}"
+            echo "sha=$(git rev-parse HEAD)"
+            echo "tag=${tag}"
+          } >> "$GITHUB_OUTPUT"
+
+  release:
+    name: Build and publish
+    needs: bump
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      RELEASE_VERSION: ${{ needs.bump.outputs.release }}
+      RELEASE_TAG: ${{ needs.bump.outputs.tag }}
+    steps:
+      - name: Check out release commit
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: ${{ needs.bump.outputs.sha }}
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v5
+
+      - name: Test and build plugin
+        run: ./gradlew clean build --no-daemon
+
+      - name: Verify and package plugin
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          from zipfile import ZipFile
+
+          version = os.environ["RELEASE_VERSION"]
+          with ZipFile(f"build/libs/warpplus-{version}.jar") as jar:
+              descriptor = jar.read("plugin.yml").decode("utf-8")
+              if f"version: '{version}'" not in descriptor.splitlines():
+                  raise SystemExit("Plugin descriptor version does not match the release version")
+              if "com/scchan/warpplus/WarpPlusPlugin.class" not in jar.namelist():
+                  raise SystemExit("Release JAR is missing the plugin entry point")
+          PY
+          mkdir -p dist
+          cp "build/libs/warpplus-${RELEASE_VERSION}.jar" dist/
+          cd dist
+          sha256sum "warpplus-${RELEASE_VERSION}.jar" > "warpplus-${RELEASE_VERSION}.jar.sha256"
+
+      - name: Create and push release tag
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # A failed publishing step can be retried against the same release commit.
+          git fetch origin --tags
+          if git show-ref --verify --quiet "refs/tags/${RELEASE_TAG}"; then
+            test "$(git rev-parse "${RELEASE_TAG}^{commit}")" = "$(git rev-parse HEAD)"
+          else
+            git tag --annotate "$RELEASE_TAG" --message "WarpPlus ${RELEASE_TAG}"
+            git push origin "refs/tags/${RELEASE_TAG}"
+          fi
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          jar="warpplus-${RELEASE_VERSION}.jar"
+          checksum="${jar}.sha256"
+          if gh release view "$RELEASE_TAG" --json isDraft --jq '.isDraft' > "$RUNNER_TEMP/release-draft"; then
+            if [[ "$(cat "$RUNNER_TEMP/release-draft")" == "true" ]]; then
+              gh release upload "$RELEASE_TAG" "dist/$jar" "dist/$checksum" --clobber
+              gh release edit "$RELEASE_TAG" --draft=false
+            else
+              # Published assets may be immutable. A retry must match, never overwrite them.
+              mkdir -p "$RUNNER_TEMP/published"
+              gh release download "$RELEASE_TAG" --pattern "$jar" --pattern "$checksum" \
+                --dir "$RUNNER_TEMP/published"
+              cmp "dist/$jar" "$RUNNER_TEMP/published/$jar"
+              cmp "dist/$checksum" "$RUNNER_TEMP/published/$checksum"
+            fi
+          else
+            gh release create "$RELEASE_TAG" "dist/$jar" "dist/$checksum" --generate-notes \
+              --title "WarpPlus ${RELEASE_TAG}" --verify-tag
+          fi
