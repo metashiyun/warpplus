@@ -1,6 +1,12 @@
 # WarpPlus
 
-A PaperMC plugin that gives `/warp` a domain-style hierarchy and a public WHOIS registry.
+A PaperMC plugin with hierarchical warp domains, delegated ownership, and a public WHOIS registry.
+
+- `/warp <destination>` teleports.
+- `/whois <domain>` shows registry details.
+- `/warpplus` browses and manages the registry.
+
+Version 1.2 moves the former `/warp` management subcommands to `/warpplus`; records and destinations are unchanged. There is no `/warp go`, `/warp legacy`, or `/warp whois` subcommand.
 
 ```text
 com                         namespace
@@ -14,7 +20,7 @@ Names run **from parent to child, left to right**, as in the example above. Each
 ## Build and install
 
 1. Install JDK 21 or newer to build, then run `./gradlew build` (`gradlew.bat build` on Windows).
-2. Copy `build/libs/warpplus-1.1.0.jar` into your Paper server's `plugins/` directory, replacing the previous WarpPlus JAR if present.
+2. Copy `build/libs/warpplus-1.2.0.jar` into your Paper server's `plugins/` directory, replacing the previous WarpPlus JAR if present.
 3. Restart the server.
 
 The plugin compiles against **Paper 1.21.11**, targets Java 21 bytecode, and uses no server internals. Paper 1.21.11 is the minimum supported API; newer Paper versions should be verified on your server before deployment. Use the Java runtime required by your server: Paper 1.21.11 uses Java 21; Paper 26.1+ requires Java 25. See [Paper's requirements](https://docs.papermc.io/paper/getting-started/) and [plugin setup](https://docs.papermc.io/paper/dev/project-setup/).
@@ -28,17 +34,17 @@ EssentialsX keeps its warp locations, permissions, and teleport settings. WarpPl
 For an existing EssentialsX warp named `market`, run these as a registrar/operator:
 
 ```text
-/warp namespace com
-/warp namespace com.example
-/warp link com.example.market market
-/warp set com.example.market organization Example Guild
-/warp set com.example.market maintainer Alex
-/warp set com.example.market contact Discord: example-guild
-/warp whois com.example.market
+/warpplus namespace com
+/warpplus namespace com.example
+/warpplus link com.example.market market
+/warpplus set com.example.market organization Example Guild
+/warpplus set com.example.market maintainer Alex
+/warpplus set com.example.market contact Discord: example-guild
+/whois com.example.market
 /warp com.example.market
 ```
 
-Create the target first with EssentialsX's `/setwarp market` if it does not exist (requires EssentialsX's normal permissions). `/warp link` creates a domain if its parent exists and you control it, or replaces the destination of a domain you control. Linking does not grant permission to visit the target warp.
+Create the target first with EssentialsX's `/setwarp market` if it does not exist (requires EssentialsX's normal permissions). `/warpplus link` creates a domain if its parent exists and you control it, or replaces the destination of a domain you control. Linking does not grant permission to visit the target warp.
 
 With the integration active:
 
@@ -46,24 +52,22 @@ With the integration active:
 | --- | --- |
 | `/warp spawn` | Visit the existing EssentialsX warp if `spawn` is not a registered WarpPlus domain. |
 | `/warp com.example.market` | Visit the EssentialsX warp linked to that domain. |
-| `/warp go com.example.market` | Explicit domain visit, including reserved subcommand names. |
 | `/warp com.example.market Alex` | EssentialsX's teleport-other-player form, with its normal permissions. |
-| `/warp` or `/warp 2` | EssentialsX warp list and pagination. |
-| `/warp legacy [args...]` | Explicit EssentialsX handling, even when a name collides with a domain or subcommand. |
-| `/warp list com.example` | Browse the WarpPlus hierarchy. |
-| `/warp help` | Show WarpPlus help. |
+| `/warp` | Show teleport usage; no warp list or registry actions. |
+| `/warpplus list com.example` | Browse the WarpPlus hierarchy. |
+| `/warpplus help` | Show WarpPlus help. |
 
-Registered WarpPlus names take priority over legacy warp names. Namespaces and WarpPlus subcommands stay with WarpPlus. `/ewarp` and `/essentials:warp` remain direct EssentialsX commands. In standalone mode, `/warp` without arguments shows WarpPlus help as before.
+Registered WarpPlus names take priority over legacy warp names. `/warp` has no subcommands: names such as `help`, `list`, or `delete` are ordinary teleport destinations. Bare `/warp` reports usage, and numeric EssentialsX page arguments are rejected instead of listing warps. Browse with `/warpplus list`. `/ewarp` and `/essentials:warp` remain direct EssentialsX commands, including EssentialsX’s own listing behavior.
 
 For player-entered legacy and linked teleport commands, WarpPlus rewrites the command to `/essentials:warp <target>` **before EssentialsX's player-command listener** runs. EssentialsX therefore sees the original warp name for command cooldown matching and handles its normal warp permissions, per-warp permissions, costs, warmups, teleport cooldowns, safety checks, and `/back` state. WarpPlus never runs these as console or temporarily grants permissions. Programmatic Bukkit command execution delegates directly to the EssentialsX command; as with normal Bukkit dispatch, it does not synthesize a player-command preprocessing event. Tab suggestions for legacy targets come from EssentialsX's own permission-filtered completer. [EssentialsX warp implementation](https://github.com/EssentialsX/Essentials/blob/2.21.2/Essentials/src/main/java/com/earth2me/essentials/commands/Commandwarp.java), [command listener](https://github.com/EssentialsX/Essentials/blob/2.21.2/Essentials/src/main/java/com/earth2me/essentials/EssentialsPlayerListener.java).
 
-If EssentialsX becomes unavailable, links remain in the registry and visits fail without falling back to a local position. WHOIS shows the target name and backend status, without reading or publishing its world coordinates. `/warp clearlocation <domain>` removes a link while preserving the domain, metadata, and children. Deleting a WarpPlus record also leaves the EssentialsX warp untouched.
+If EssentialsX becomes unavailable, links remain in the registry and visits fail without falling back to a local position. WHOIS shows the target name and backend status, without reading or publishing its world coordinates. `/warpplus clearlocation <domain>` removes a link while preserving the domain, metadata, and children. Deleting a WarpPlus record also leaves the EssentialsX warp untouched.
 
-`/warp register` and `/warp setlocation` still create **local WarpPlus destinations**, with WarpPlus's standalone teleport behavior. They do not use EssentialsX warp permission/cost/warmup settings. Use `/warp link` for an EssentialsX-managed destination. Converting between a link and a local destination replaces the previous destination; there is no hidden fallback.
+`/warpplus register` and `/warpplus setlocation` still create **local WarpPlus destinations**, with WarpPlus's standalone teleport behavior. They do not use EssentialsX warp permission/cost/warmup settings. Use `/warpplus link` for an EssentialsX-managed destination. Converting between a link and a local destination replaces the previous destination; there is no hidden fallback.
 
 ### Command ownership
 
-EssentialsX normally hands `/warp` to another plugin that provides it. Keep `warp` out of EssentialsX's `overridden-commands` setting to allow WarpPlus's hierarchy commands. If command ownership on your server differs, use `/warpplus:warp` and `/warpplus:warpwhois` explicitly. See [EssentialsX's command conflict guidance](https://essentialsx.net/wiki/faq).
+EssentialsX normally hands overlapping commands to another plugin that provides them. Keep `warp` and `whois` out of EssentialsX's `overridden-commands` setting to use WarpPlus's versions. `/whois <domain>` reads the public domain registry; use `/essentials:whois <player>` or `/ewhois <player>` for EssentialsX's player lookup. If command ownership on your server differs, use `/warpplus:warp`, `/warpplus:whois`, and `/warpplus:warpplus` explicitly. See [EssentialsX's command conflict guidance](https://essentialsx.net/wiki/faq).
 
 You can also merge this alias into your server-root `commands.yml`, then restart:
 
@@ -71,6 +75,8 @@ You can also merge this alias into your server-root `commands.yml`, then restart
 aliases:
   warp:
     - 'warpplus:warp $1-'
+  whois:
+    - 'warpplus:whois $1-'
 ```
 
 Preserve other aliases already in that file. Paper's legacy `commands.yml` aliases have limitations around tab completion; the explicit `/warpplus:warp` command retains WarpPlus's completer. [Paper alias documentation](https://docs.papermc.io/paper/reference/bukkit-commands-configuration/).
@@ -80,14 +86,14 @@ Preserve other aliases already in that file. Paper's legacy `commands.yml` alias
 As an operator in-game:
 
 ```text
-/warp namespace com
-/warp namespace com.example
-/warp set com.example name Example Guild
-/warp set com.example organization Example Builders Association
-/warp set com.example maintainer Alex and the build team
-/warp set com.example contact Discord: example-guild
-/warp set com.example website https://example.com
-/warp transfer com.example Alex
+/warpplus namespace com
+/warpplus namespace com.example
+/warpplus set com.example name Example Guild
+/warpplus set com.example organization Example Builders Association
+/warpplus set com.example maintainer Alex and the build team
+/warpplus set com.example contact Discord: example-guild
+/warpplus set com.example website https://example.com
+/warpplus transfer com.example Alex
 ```
 
 `Alex` must be online when transferring by name. A UUID also works, including for offline players. The console can create namespaces and transfer them using the same commands; console-created namespaces initially belong to the server administrators.
@@ -95,21 +101,21 @@ As an operator in-game:
 Alex then stands at the market entrance and runs:
 
 ```text
-/warp register com.example.market
-/warp set com.example.market name Example Central Market
-/warp set com.example.market poi Public market and trading hall
-/warp set com.example.market maintainer Alex
-/warp set com.example.market contact Discord: example-guild
-/warp set com.example.market description Player shops, stalls, and community trading.
+/warpplus register com.example.market
+/warpplus set com.example.market name Example Central Market
+/warpplus set com.example.market poi Public market and trading hall
+/warpplus set com.example.market maintainer Alex
+/warpplus set com.example.market contact Discord: example-guild
+/warpplus set com.example.market description Player shops, stalls, and community trading.
 ```
 
 Anyone with the default use permission can browse, query, and travel:
 
 ```text
-/warp list
-/warp list com
-/warp list com.example
-/warp whois com.example.market
+/warpplus list
+/warpplus list com
+/warpplus list com.example
+/whois com.example.market
 /warpwhois com.example.market
 /warp com.example.market
 ```
@@ -120,25 +126,23 @@ Metadata belongs to each individual record; it does not inherit from a parent. W
 
 | Command | Purpose |
 | --- | --- |
-| `/warp <domain>` | Teleport to an exact registered name. |
-| `/warp go <domain>` | Explicit teleport, including names such as `help` that match subcommands. |
-| `/warp whois <domain>` | Show the public registry record. |
-| `/warpwhois <domain>` or `/wwhois <domain>` | WHOIS shortcut. |
-| `/warp list [parent\|-] [page]` | List direct children, sorted by name, eight per page. Omit parent or use `-` for roots. |
-| `/warp register <domain>` | Register a destination at your current position, including yaw and pitch. Players only. |
-| `/warp namespace <domain>` | Register a name without a destination. |
-| `/warp link <domain> <essentials-warp>` | Register or update a controlled domain with an existing EssentialsX warp target. |
-| `/warp legacy [args...]` | Run the EssentialsX warp list or teleport command explicitly. |
-| `/warp set <domain> <field> <value...>` | Set `name`, `organization`, `poi`, `maintainer`, `contact`, `website`, or `description`. Use `-` as the value to clear it. |
-| `/warp setlocation <domain>` | Set or move a destination to your current position. Players only. |
-| `/warp clearlocation <domain>` | Remove a local destination or EssentialsX link while keeping its registration and children. |
-| `/warp transfer <domain> <online-player\|uuid>` | Transfer that record's ownership. |
-| `/warp delete <domain>` | Delete a record with no children. |
-| `/warp help` | Show command help. |
+| `/warp <destination> [player]` | Teleport to a registered domain or legacy EssentialsX warp. The player argument requires EssentialsX; console must supply it. |
+| `/whois <domain>` | Show the public registry record. |
+| `/warpwhois <domain>` or `/wwhois <domain>` | Compatibility aliases for `/whois`. |
+| `/warpplus list [parent\|-] [page]` | List direct children, sorted by name, eight per page. Omit parent or use `-` for roots. |
+| `/warpplus register <domain>` | Register a destination at your current position, including yaw and pitch. Players only. |
+| `/warpplus namespace <domain>` | Register a name without a destination. |
+| `/warpplus link <domain> <essentials-warp>` | Register or update a controlled domain with an existing EssentialsX warp target. |
+| `/warpplus set <domain> <field> <value...>` | Set `name`, `organization`, `poi`, `maintainer`, `contact`, `website`, or `description`. Use `-` as the value to clear it. |
+| `/warpplus setlocation <domain>` | Set or move a destination to your current position. Players only. |
+| `/warpplus clearlocation <domain>` | Remove a local destination or EssentialsX link while keeping its registration and children. |
+| `/warpplus transfer <domain> <online-player\|uuid>` | Transfer that record's ownership. |
+| `/warpplus delete <domain>` | Delete a record with no children. |
+| `/warpplus help` | Show command help. |
 
 Names are case-insensitive ASCII letters/digits with internal hyphens, separated by dots. Labels have 1–63 characters; the full name has at most 253 characters and 16 labels. For example, `COM.Example` resolves to `com.example`. Unicode is supported in descriptive metadata. Tab completion offers names, manageable domains, metadata fields, and online transfer recipients. List entries can suggest the corresponding browse or teleport command when clicked.
 
-Local teleportation uses Paper's asynchronous chunk loading. A namespace without a destination cannot be visited; `/warp list <namespace>` shows its children. Local destinations resolve by world UUID, and unloaded/missing worlds, out-of-height positions, border violations, and cancelled teleports return an error. Local warps use the exact registered position, without searching for safe ground; maintainers should choose suitable arrival points. Linked destinations use EssentialsX's own teleport handling instead.
+Local teleportation uses Paper's asynchronous chunk loading. A namespace without a destination cannot be visited; `/warpplus list <namespace>` shows its children. Local destinations resolve by world UUID, and unloaded/missing worlds, out-of-height positions, border violations, and cancelled teleports return an error. Local warps use the exact registered position, without searching for safe ground; maintainers should choose suitable arrival points. Linked destinations use EssentialsX's own teleport handling instead.
 
 ## Permissions and delegation
 
