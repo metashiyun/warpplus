@@ -13,15 +13,15 @@ Names run from parent to child, left to right. Each domain has an owner and can 
 
 ## Install
 
-Requires Paper 1.21.11 or newer and the Java version required by your server. EssentialsX integration is optional.
+Requires Paper and the Java version required by your server. EssentialsX integration is optional.
 
-1. Download the plugin JAR from [Releases](https://github.com/metashiyun/warpplus/releases), or build it with JDK 21 or newer:
+1. Download the plugin JAR from [Releases](https://github.com/metashiyun/warpplus/releases), or build it from source:
 
    ```sh
    ./gradlew build
    ```
 
-   On Windows, use `gradlew.bat build`. The built JAR is `build/libs/warpplus-1.3.1.jar`.
+   On Windows, use `gradlew.bat build`. The built JAR is in `build/libs/`.
 
 2. Place the JAR in your server's `plugins/` directory, replacing the previous WarpPlus JAR when upgrading.
 3. Restart the server.

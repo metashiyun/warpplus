@@ -75,13 +75,7 @@ jobs:
           if result.returncode != 1:
               raise SystemExit("Unable to check existing release tags")
 
-          readme_path = Path("README.md")
-          readme, count = re.subn(r'build/libs/warpplus-[0-9]+\.[0-9]+\.[0-9]+\.jar',
-                                  f"build/libs/warpplus-{version}.jar", readme_path.read_text())
-          if count != 1:
-              raise SystemExit("Expected exactly one installation JAR version in README.md")
           path.write_text(source[:match.start()] + f'version = "{version}"' + source[match.end():])
-          readme_path.write_text(readme)
           print(version)
           PY
           )"
@@ -89,7 +83,7 @@ jobs:
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add build.gradle.kts README.md
+          git add build.gradle.kts
           git commit -m "chore(release): prepare ${tag}" \
             -m "Co-Authored-By: Sicheng Chen (bot) <gh-bot@scchan.com>"
           git push origin HEAD:main
